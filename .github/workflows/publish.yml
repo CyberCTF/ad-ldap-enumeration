@@ -1,0 +1,28 @@
+name: Register lab
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  register:
+    # Skip the template itself (by name, evaluable before checkout; hashFiles would break here).
+    if: github.repository != 'CyberCTF/Lab-Template'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      # The Isoloom release the lab is published with (1.x: records the lab's engine compatibility).
+      - name: Install the Isoloom CLI
+        run: cargo install isoloom@1.0.1
+      - run: isoloom generate
+      - uses: CyberCTF/publish-lab-action@v1
+        with:
+          client_id: ${{ secrets.CYBERAUTH_CLIENT_ID }}
+          client_secret: ${{ secrets.CYBERAUTH_CLIENT_SECRET }}
+          backend_url: ${{ secrets.CYBERBACKEND_URL }}
+          token_url: ${{ secrets.CYBERAUTH_TOKEN_URL }}
+          # The Isothrum runner release this lab was validated against (bundled by the launcher).
+          isothrum_version: "1.0.0"

@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://www.isoloom.com/schema/v1.json
+# LDAP / BloodHound enumeration (GOAD-themed) as a single-container Isoloom lab: one Samba
+# Active Directory Domain Controller for NORTH.SEVENKINGDOMS.LOCAL, no Windows VMs. It provisions
+# a foothold user (hodor), a service account (svc_backup) whose LDAP `description` leaks its own
+# password, and a nested group chain (svc_backup -> "IT Backup" -> "Vault Readers") that is the
+# only path to a vault share holding the flag. The student binds with the foothold creds,
+# enumerates the directory (ldapsearch / nxc ldap / BloodHound), reads the leaked credential,
+# follows the nested group path, and loots the flag. `isoloom generate`, then
+# `isothrum up . --target docker`.
+version: 1
+
+name: ldap-enum-north
+
+# Given by the CyberCTF launcher: this player's flag. Without it the development flag.
+inputs: [CTF_FLAG_MAIN]
+
+networks:
+  lab: { cidr: 10.61.12.0/24, internet: false }
+
+machines:
+  dc:
+    networks: { lab: 10 }
+    aliases: [dc.north.sevenkingdoms.local, north.sevenkingdoms.local]
+    resources: { cpus: 2, memory_mb: 2048 }
+    ports:
+      dns:         { port: 53,   protocol: tcp }
+      dns-udp:     { port: 53,   protocol: udp }
+      kerberos:    { port: 88,   protocol: tcp }
+      kerberos-udp: { port: 88,  protocol: udp }
+      ldap:        { port: 389,  protocol: tcp }
+      smb:         { port: 445,  protocol: tcp }
+      kpasswd:     { port: 464,  protocol: tcp }
+      kpasswd-udp: { port: 464,  protocol: udp }
+      ldaps:       { port: 636,  protocol: tls }
+      gc:          { port: 3268, protocol: tcp }
+    # The flag arrives as a file before the DC starts (Isoloom's sensitive-input mechanism);
+    # provisioning copies it into the vault that only "Vault Readers" may read.
+    files:
+      - { path: /ctf/flag, input: CTF_FLAG_MAIN, mode: "0444" }
+    app:
+      build: build/dc
+
+checks:
+  - { name: the KDC answers, tcp: dc:88, wait: 120 }
+  - { name: LDAP answers, tcp: dc:389, wait: 120 }
+  - { name: SMB answers, tcp: dc:445, wait: 120 }
+  # End-to-end LDAP enumeration, driven from inside the DC: hodor binds over a plain LDAP simple
+  # bind, reads svc_backup's leaked password out of its `description`, confirms the nested group
+  # path to "Vault Readers", and uses that password to read the flag from the vault share. Passes
+  # only when the directory is genuinely enumerable this way; gated behind the ports.
+  - name: LDAP enumeration recovers svc_backup's password and unlocks the flag
+    from: dc
+    exec: /opt/ldapenum/check.sh
+    expect: LDAP_ENUM_OK
+    wait: 180
+
+message: |
+  # LDAP / BloodHound enumeration — NORTH.SEVENKINGDOMS.LOCAL
+
+  A lone Active Directory Domain Controller (Samba) runs the realm **NORTH.SEVENKINGDOMS.LOCAL**:
+
+  - **DC:** `dc.north.sevenkingdoms.local` at `{{ machines.dc.addresses.lab }}` (LDAP 389, SMB 445, KDC 88).
+  - **Your foothold (a normal domain user):** `hodor` / `Hodor123!`
+
+  **Objective:** any authenticated user can read most of Active Directory over LDAP. Somewhere in
+  the directory, an administrator left a service account's password in plain sight, and a nested
+  group grants that account the only path to a protected share. Enumerate the directory, find the
+  leaked credential and the path it unlocks, and read the flag from a share you cannot open as
+  `hodor`.
+
+  Point your attack box's resolver at the DC, then:
+
+  1. **Enumerate users and read object attributes (plain LDAP simple bind):**
+     `ldapsearch -x -H ldap://{{ machines.dc.addresses.lab }} -D 'hodor@north.sevenkingdoms.local' -w 'Hodor123!' -b 'DC=north,DC=sevenkingdoms,DC=local' '(objectClass=user)' sAMAccountName description memberOf`
+     → notice `svc_backup`, whose `description` leaks its own password.
+  2. **Map the paths (nxc / BloodHound):**
+     `nxc ldap {{ machines.dc.addresses.lab }} -u hodor -p 'Hodor123!' --bloodhound --collection All`
+     → `svc_backup` is a member of **IT Backup**, which is nested inside **Vault Readers**.
+  3. **See what Vault Readers unlocks:** the `vault` share is restricted to **Vault Readers**.
+  4. **Loot the flag:** `smbclient //dc/vault -U 'NORTH\svc_backup%<leaked>' -c 'get flag.txt'`.
+
+  Submit the contents of `flag.txt`.

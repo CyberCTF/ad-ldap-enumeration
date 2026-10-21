@@ -1,0 +1,77 @@
+{
+  "objectives": [
+    {
+      "key": "main",
+      "title": "Read the flag",
+      "prompt": "From the hodor foothold, enumerate Active Directory over LDAP: recover svc_backup's password from its description attribute, confirm the nested group path (IT Backup -> Vault Readers), then read flag.txt from the //dc/vault share that only Vault Readers may open.",
+      "check": {
+        "evidence": "SECRET",
+        "format": "FLAG{%s}"
+      },
+      "dev": "FLAG{dev-ldap-enum-north-svc_backup}",
+      "hints": [
+        "hodor is a normal domain user (hodor / Hodor123!), and any authenticated user may read most of AD over LDAP. Point your resolver at the DC and bind with a plain simple bind: ldapsearch -x -H ldap://<dc> -D 'hodor@north.sevenkingdoms.local' -w 'Hodor123!' -b 'DC=north,DC=sevenkingdoms,DC=local' '(objectClass=user)' sAMAccountName description memberOf.",
+        "Read the object attributes, not just the names: one service account (svc_backup) has its own password sitting in its description attribute. Administrators do this far too often.",
+        "svc_backup is not a direct member of the group that unlocks the vault. Map the group memberships (nxc ldap <dc> -u hodor -p 'Hodor123!' --bloodhound --collection All, or follow memberOf by hand): svc_backup -> IT Backup -> Vault Readers. The vault share is restricted to Vault Readers, so authenticate as svc_backup: smbclient //dc/vault -U 'NORTH\\svc_backup%<leaked>' -c 'get flag.txt'."
+      ],
+      "steps": [
+        {
+          "key": "technique",
+          "title": "Name the technique",
+          "prompt": "What is the name of the activity where an authenticated user reads Active Directory over LDAP to map users, groups and attributes?",
+          "check": {
+            "answer": [
+              "ldap enumeration",
+              "ldap enum",
+              "enumeration",
+              "bloodhound"
+            ]
+          }
+        },
+        {
+          "key": "account",
+          "title": "Find the leaky account",
+          "prompt": "Which service account leaks its own password in Active Directory? (username)",
+          "check": {
+            "answer": [
+              "svc_backup",
+              "north\\svc_backup"
+            ]
+          }
+        },
+        {
+          "key": "attribute",
+          "title": "Name the attribute",
+          "prompt": "Which object attribute holds the leaked password? (one word)",
+          "check": {
+            "answer": [
+              "description"
+            ]
+          }
+        },
+        {
+          "key": "nested",
+          "title": "Follow the nested group",
+          "prompt": "svc_backup is a direct member of which group that is itself nested inside Vault Readers? (group name)",
+          "check": {
+            "answer": [
+              "it backup",
+              "it-backup"
+            ]
+          }
+        },
+        {
+          "key": "resource",
+          "title": "Name the gated resource",
+          "prompt": "Which group must you belong to in order to open the share that holds the flag? (group name)",
+          "check": {
+            "answer": [
+              "vault readers",
+              "vault-readers"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
