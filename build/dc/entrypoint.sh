@@ -1,33 +1,40 @@
 #!/bin/bash
 # Brings the Samba AD DC up deterministically and idempotently:
-#   1. provisions realm NORTH.SEVENKINGDOMS.LOCAL once (skipped on restart),
-#   2. creates the low-privilege foothold user `hodor` and a decoy user `jon.snow`,
-#   3. creates the service account `svc_backup` and leaks its own password in the LDAP
+#   1. provisions realm BRIGHTWELL.LAB once (skipped on restart),
+#   2. creates the low-privilege foothold user `s.adeyemi` and a decoy user `p.oduya`,
+#   3. creates the service account `svc-moodle` and leaks its own password in the LDAP
 #      `description` attribute (readable by any authenticated user),
-#   4. builds the nested group chain  svc_backup -> "IT Backup" -> "Vault Readers",
-#   5. plants the flag in a share only "Vault Readers" may read,
+#   4. builds the nested group chain  svc-moodle -> "IT-Staff" -> "Registry-Admins",
+#   5. plants the flag in a share only "Registry-Admins" may read,
 #   6. runs the single `samba` AD DC process in the foreground.
 # Re-running it against an already-provisioned DC changes nothing (safe restart).
+#
+# Scenario: Brightwell University. The Moodle learning-management system syncs against AD under a
+# dedicated service account (svc-moodle) whose password an administrator left in plain sight in
+# its `description` attribute, where any authenticated user can read it.
 set -euo pipefail
 
-REALM="NORTH.SEVENKINGDOMS.LOCAL"
-DOMAIN="NORTH"
-BASE_DN="DC=north,DC=sevenkingdoms,DC=local"
+REALM="BRIGHTWELL.LAB"
+DOMAIN="BRIGHTWELL"
+BASE_DN="DC=brightwell,DC=lab"
 # DC administrator password: infrastructure only, never shown to the student.
-ADMIN_PASS="DCAdm1n#Winterfell2024"
+ADMIN_PASS="DCAdm1n#Brightwell2024"
 # Student's low-privilege foothold account (handed out in the lab message).
-HODOR_PASS="Hodor123!"
-# Decoy domain user (makes the directory feel real; leads nowhere).
-JON_PASS="Gh0st-Direwolf-77"
+FOOTHOLD_USER="s.adeyemi"
+FOOTHOLD_PASS="Student!2024"
+# Decoy domain user (a lecturer; makes the directory feel real, leads nowhere).
+DECOY_USER="p.oduya"
+DECOY_PASS="Vt7q-Rm2k-Xp9!"
 # Service account whose password is leaked in its LDAP description. Policy-compliant but
 # recovered by simply reading the directory, not by guessing.
-SVC_USER="svc_backup"
-SVC_PASS="B@ckup_Winterfell_2023!"
-SVC_DESC="Service account for nightly backups - do not disable. Initial password set to ${SVC_PASS}"
-# Groups: the resource group that gates the vault, and the nested group svc_backup belongs to.
-VAULT_GROUP="Vault Readers"
-NEST_GROUP="IT Backup"
-NOBLES_GROUP="North Nobles"
+SVC_USER="svc-moodle"
+SVC_PASS="M00dle-LDAP-2023!"
+SVC_DESC="Moodle LMS directory sync account - do not disable. Initial password set to ${SVC_PASS}"
+# Groups: the resource group that gates the registry share, and the nested group svc-moodle
+# belongs to.
+REGISTRY_GROUP="Registry-Admins"
+NEST_GROUP="IT-Staff"
+FACULTY_GROUP="Faculty"
 
 PRIVATE_DIR="/var/lib/samba/private"
 STAMP="${PRIVATE_DIR}/.isoloom-provisioned"
@@ -54,7 +61,7 @@ if [ ! -f "${STAMP}" ]; then
   # Kerberos client config and resolver point the DC at its own internal DNS.
   cp -f "${PRIVATE_DIR}/krb5.conf" /etc/krb5.conf
 
-  # Publish the vault share that guards the flag.
+  # Publish the registry share that guards the flag.
   cat /opt/ldapenum/vault-share.conf >> /etc/samba/smb.conf
 
   touch "${STAMP}"
@@ -74,21 +81,21 @@ if ! grep -q 'ldap server require strong auth' /etc/samba/smb.conf 2>/dev/null; 
 fi
 
 # Resolver: the DC resolves its own realm through Samba's internal DNS.
-printf 'nameserver 127.0.0.1\nsearch north.sevenkingdoms.local\n' > /etc/resolv.conf 2>/dev/null || true
-grep -q 'dc.north.sevenkingdoms.local' /etc/hosts 2>/dev/null || \
-  printf '127.0.0.1 dc.north.sevenkingdoms.local dc\n' >> /etc/hosts 2>/dev/null || true
+printf 'nameserver 127.0.0.1\nsearch brightwell.lab\n' > /etc/resolv.conf 2>/dev/null || true
+grep -q 'dc.brightwell.lab' /etc/hosts 2>/dev/null || \
+  printf '127.0.0.1 dc.brightwell.lab dc\n' >> /etc/hosts 2>/dev/null || true
 
 # Users are created offline against the local sam.ldb, so this works whether or not the samba
 # process is already running.
-if ! samba-tool user list 2>/dev/null | grep -qx "hodor"; then
-  log "creating foothold user hodor"
-  samba-tool user create hodor "${HODOR_PASS}" >/dev/null
+if ! samba-tool user list 2>/dev/null | grep -qx "${FOOTHOLD_USER}"; then
+  log "creating foothold user ${FOOTHOLD_USER}"
+  samba-tool user create "${FOOTHOLD_USER}" "${FOOTHOLD_PASS}" >/dev/null
 fi
 
-if ! samba-tool user list 2>/dev/null | grep -qx "jon.snow"; then
-  log "creating decoy user jon.snow"
-  samba-tool user create "jon.snow" "${JON_PASS}" \
-    --given-name=Jon --surname=Snow >/dev/null
+if ! samba-tool user list 2>/dev/null | grep -qx "${DECOY_USER}"; then
+  log "creating decoy user ${DECOY_USER}"
+  samba-tool user create "${DECOY_USER}" "${DECOY_PASS}" \
+    --given-name=Priya --surname=Oduya >/dev/null
 fi
 
 if ! samba-tool user list 2>/dev/null | grep -qx "${SVC_USER}"; then
@@ -116,10 +123,10 @@ EOF
   fi
 fi
 
-# Groups and the nested membership that forms the only path to the vault:
-#   svc_backup  (member of)  "IT Backup"  (member of)  "Vault Readers"  -> vault share.
-# hodor and jon.snow are in none of these, so neither can reach the flag directly.
-for g in "${NOBLES_GROUP}" "${NEST_GROUP}" "${VAULT_GROUP}"; do
+# Groups and the nested membership that forms the only path to the registry share:
+#   svc-moodle  (member of)  "IT-Staff"  (member of)  "Registry-Admins"  -> registry share.
+# s.adeyemi and p.oduya are in none of these, so neither can reach the flag directly.
+for g in "${FACULTY_GROUP}" "${NEST_GROUP}" "${REGISTRY_GROUP}"; do
   if ! samba-tool group list 2>/dev/null | grep -qx "${g}"; then
     log "creating group ${g}"
     samba-tool group add "${g}" >/dev/null
@@ -133,24 +140,24 @@ add_member() { # group member -- idempotent
     samba-tool group addmembers "${grp}" "${mem}" >/dev/null
   fi
 }
-add_member "${NOBLES_GROUP}" "jon.snow"
-add_member "${NEST_GROUP}"   "${SVC_USER}"
-add_member "${VAULT_GROUP}"  "${NEST_GROUP}"   # nested group membership
+add_member "${FACULTY_GROUP}"  "${DECOY_USER}"
+add_member "${NEST_GROUP}"     "${SVC_USER}"
+add_member "${REGISTRY_GROUP}" "${NEST_GROUP}"   # nested group membership
 
 # Passwords never expire, so the lab behaves the same on day 1 and day 60.
-for u in hodor jon.snow "${SVC_USER}"; do
+for u in "${FOOTHOLD_USER}" "${DECOY_USER}" "${SVC_USER}"; do
   samba-tool user setexpiry "${u}" --noexpiry >/dev/null 2>&1 || true
 done
 
-# Plant the flag inside the vault. CTF_FLAG_MAIN is delivered by the launcher at /ctf/flag
+# Plant the flag inside the registry share. CTF_FLAG_MAIN is delivered by the launcher at /ctf/flag
 # (Isoloom's sensitive-input-as-file mechanism); fall back to a dev flag for a bare run.
-mkdir -p /srv/vault
+mkdir -p /srv/registry
 if [ -s /ctf/flag ]; then
-  cp -f /ctf/flag /srv/vault/flag.txt
+  cp -f /ctf/flag /srv/registry/flag.txt
 else
-  printf 'FLAG{dev-ldap-enum-north-svc_backup}\n' > /srv/vault/flag.txt
+  printf 'FLAG{dev-ldap-enum-brightwell-svc-moodle}\n' > /srv/registry/flag.txt
 fi
-chmod 0444 /srv/vault/flag.txt
+chmod 0444 /srv/registry/flag.txt
 
 log "starting samba (AD DC) ..."
 exec samba --interactive --no-process-group

@@ -2,10 +2,10 @@
   "project_name": "cyberlabs-ad-ldap-enumeration",
   "slug": "ad-ldap-enumeration",
   "title": "LDAP / BloodHound Enumeration (Active Directory)",
-  "description": "A single Samba Active Directory Domain Controller for NORTH.SEVENKINGDOMS.LOCAL, no Windows VMs. Any authenticated user can read the directory over LDAP: a service account (svc_backup) carries its own password in its description attribute, and a nested group chain (IT Backup -> Vault Readers) grants it the only path to a protected share. From the foothold user hodor, enumerate the directory with ldapsearch / nxc / BloodHound, recover the leaked credential, follow the nested group path, and read the flag from the vault share only Vault Readers may open.",
+  "description": "A single Samba Active Directory Domain Controller for BRIGHTWELL.LAB (Brightwell University), no Windows VMs. Any authenticated user can read the directory over LDAP: a service account (svc-moodle, the Moodle LMS sync account) carries its own password in its description attribute, and a nested group chain (IT-Staff -> Registry-Admins) grants it the only path to a protected share. From the foothold user s.adeyemi, enumerate the directory with ldapsearch / nxc / BloodHound, recover the leaked credential, follow the nested group path, and read the flag from the registry share only Registry-Admins may open.",
   "category": "network",
   "difficulty": 2,
   "evidence_kind": "SECRET",
   "capabilities": [],
-  "question": "Enumerate Active Directory over LDAP from the hodor foothold, recover svc_backup's password from its description attribute, follow the nested group path to Vault Readers, and read the flag from the //dc/vault share."
+  "question": "Enumerate Active Directory over LDAP from the s.adeyemi foothold, recover svc-moodle's password from its description attribute, follow the nested group path to Registry-Admins, and read the flag from the //dc/registry share."
 }

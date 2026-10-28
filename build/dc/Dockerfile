@@ -1,8 +1,8 @@
 # Samba, acting as an Active Directory Domain Controller, in a single Linux container.
-# It provisions the realm NORTH.SEVENKINGDOMS.LOCAL at first start (idempotent), plants a
-# low-privilege foothold user (hodor), a service account (svc_backup) whose LDAP `description`
-# leaks its own password, a nested group chain (IT Backup -> Vault Readers) that grants the
-# only path to a `vault` share, and the flag inside that share. The enumeration tooling
+# It provisions the realm BRIGHTWELL.LAB at first start (idempotent), plants a
+# low-privilege foothold user (s.adeyemi), a service account (svc-moodle) whose LDAP `description`
+# leaks its own password, a nested group chain (IT-Staff -> Registry-Admins) that grants the
+# only path to a `registry` share, and the flag inside that share. The enumeration tooling
 # (ldap-utils, smbclient) ships in the image so the lab's check can prove the path from inside.
 FROM debian:12-slim
 
@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Preseed krb5 so its package install never prompts.
 RUN set -eux; \
-    echo "krb5-config krb5-config/default_realm string NORTH.SEVENKINGDOMS.LOCAL" | debconf-set-selections; \
+    echo "krb5-config krb5-config/default_realm string BRIGHTWELL.LAB" | debconf-set-selections; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         samba samba-ad-provision samba-dsdb-modules samba-vfs-modules smbclient ldb-tools \

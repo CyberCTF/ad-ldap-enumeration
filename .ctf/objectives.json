@@ -3,16 +3,16 @@
     {
       "key": "main",
       "title": "Read the flag",
-      "prompt": "From the hodor foothold, enumerate Active Directory over LDAP: recover svc_backup's password from its description attribute, confirm the nested group path (IT Backup -> Vault Readers), then read flag.txt from the //dc/vault share that only Vault Readers may open.",
+      "prompt": "From the s.adeyemi foothold, enumerate Active Directory over LDAP: recover svc-moodle's password from its description attribute, confirm the nested group path (IT-Staff -> Registry-Admins), then read flag.txt from the //dc/registry share that only Registry-Admins may open.",
       "check": {
         "evidence": "SECRET",
         "format": "FLAG{%s}"
       },
-      "dev": "FLAG{dev-ldap-enum-north-svc_backup}",
+      "dev": "FLAG{dev-ldap-enum-brightwell-svc-moodle}",
       "hints": [
-        "hodor is a normal domain user (hodor / Hodor123!), and any authenticated user may read most of AD over LDAP. Point your resolver at the DC and bind with a plain simple bind: ldapsearch -x -H ldap://<dc> -D 'hodor@north.sevenkingdoms.local' -w 'Hodor123!' -b 'DC=north,DC=sevenkingdoms,DC=local' '(objectClass=user)' sAMAccountName description memberOf.",
-        "Read the object attributes, not just the names: one service account (svc_backup) has its own password sitting in its description attribute. Administrators do this far too often.",
-        "svc_backup is not a direct member of the group that unlocks the vault. Map the group memberships (nxc ldap <dc> -u hodor -p 'Hodor123!' --bloodhound --collection All, or follow memberOf by hand): svc_backup -> IT Backup -> Vault Readers. The vault share is restricted to Vault Readers, so authenticate as svc_backup: smbclient //dc/vault -U 'NORTH\\svc_backup%<leaked>' -c 'get flag.txt'."
+        "s.adeyemi is a normal domain user (s.adeyemi / Student!2024), and any authenticated user may read most of AD over LDAP. Point your resolver at the DC and bind with a plain simple bind: ldapsearch -x -H ldap://<dc> -D 's.adeyemi@brightwell.lab' -w 'Student!2024' -b 'DC=brightwell,DC=lab' '(objectClass=user)' sAMAccountName description memberOf.",
+        "Read the object attributes, not just the names: one service account (svc-moodle, the Moodle LMS sync account) has its own password sitting in its description attribute. Administrators do this far too often.",
+        "svc-moodle is not a direct member of the group that unlocks the registry share. Map the group memberships (nxc ldap <dc> -u s.adeyemi -p 'Student!2024' --bloodhound --collection All, or follow memberOf by hand): svc-moodle -> IT-Staff -> Registry-Admins. The registry share is restricted to Registry-Admins, so authenticate as svc-moodle: smbclient //dc/registry -U 'BRIGHTWELL\\svc-moodle%<leaked>' -c 'get flag.txt'."
       ],
       "steps": [
         {
@@ -34,8 +34,8 @@
           "prompt": "Which service account leaks its own password in Active Directory? (username)",
           "check": {
             "answer": [
-              "svc_backup",
-              "north\\svc_backup"
+              "svc-moodle",
+              "brightwell\\svc-moodle"
             ]
           }
         },
@@ -52,11 +52,11 @@
         {
           "key": "nested",
           "title": "Follow the nested group",
-          "prompt": "svc_backup is a direct member of which group that is itself nested inside Vault Readers? (group name)",
+          "prompt": "svc-moodle is a direct member of which group that is itself nested inside Registry-Admins? (group name)",
           "check": {
             "answer": [
-              "it backup",
-              "it-backup"
+              "it-staff",
+              "it staff"
             ]
           }
         },
@@ -66,8 +66,8 @@
           "prompt": "Which group must you belong to in order to open the share that holds the flag? (group name)",
           "check": {
             "answer": [
-              "vault readers",
-              "vault-readers"
+              "registry-admins",
+              "registry admins"
             ]
           }
         }
