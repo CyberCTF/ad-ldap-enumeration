@@ -1,0 +1,55 @@
+name: Publish lab image
+
+# The lab ships a pre-built Docker image (app.image beside app.build in isoloom.yml). This generates
+# the Docker edition and publishes its buildable Compose services to Docker Hub under
+# cyberctf/<repo>, each tagged by its service name (so the DC becomes cyberctf/<repo>:dc), and a
+# student pulls it instead of building Samba + hashcat locally (~10 minutes). It is an optimisation,
+# not a dependency: the runtime pulls the published image when it can and builds build/dc locally
+# when it cannot, so the lab still runs if this image is missing, the registry is unreachable, or the
+# push below fails. Only services with a build: are pushed (the busybox probe and the check services
+# are skipped). Keep app.image's repo/tag in step with this job's output.
+on:
+  push:
+    branches: [main]
+    paths:
+      - build/**
+      - isoloom.yml
+      - .github/workflows/image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    # Skip the template itself; only a real lab publishes an image.
+    if: github.repository != 'CyberCTF/Lab-Template'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Generate the Docker edition so the publishing action reads the real Compose file (the DC
+      # service carries both build: and image:, so it is built here and tagged as app.image).
+      - name: Install the Isoloom CLI
+        run: cargo install isoloom@1.0.2
+      - name: Generate the Docker edition
+        run: isoloom generate --target docker
+      # A Docker Hub organisation access token can push to cyberctf/* but cannot pull library/*
+      # base images (e.g. debian). Pull every base image the lab's Dockerfiles declare now, while
+      # still anonymous, so the build below uses the local copy and never re-authenticates it.
+      - name: Pre-pull base images (anonymous, before the org login)
+        run: |
+          set -euo pipefail
+          find build -name Dockerfile -print0 \
+            | xargs -0 grep -hiE '^[[:space:]]*FROM[[:space:]]' \
+            | awk '{print $2}' | grep -viE '^(scratch|\$|--)' | sort -u \
+            | while read -r img; do echo "pulling $img"; docker pull "$img" || true; done
+      # Shared action: builds each buildable service and pushes it to Docker Hub as
+      # <org>/<repo>:<service>. Logs in as the organisation (DOCKER_ORGA) with its access token
+      # (DOCKER_OAT), the same credentials the launcher's attack-box image uses.
+      - name: Build and publish to Docker Hub
+        uses: FAKGR0UP/docker-compose-publishing-tag-by-services@V1.0.1
+        with:
+          docker_hub_username: ${{ secrets.DOCKER_ORGA }}
+          docker_hub_org_name: ${{ secrets.DOCKER_ORGA }}
+          docker_hub_org_token: ${{ secrets.DOCKER_OAT }}
+          docker_compose_files: .isoloom/docker/compose.yml

@@ -37,7 +37,13 @@ machines:
     # provisioning copies it into the registry share that only "Registry-Admins" may read.
     files:
       - { path: /ctf/flag, input: CTF_FLAG_MAIN, mode: "0444" }
+    # A pre-built image (published to Docker Hub by .github/workflows/image.yml) beside the
+    # local build: the launcher pulls the published image when it can and only builds build/dc
+    # when it cannot, so a student skips the ~10-minute Samba + hashcat build. If Docker Hub is
+    # unreachable or the image is missing, the lab still comes up by building locally. The tag is
+    # the Compose service name (`dc`), matching the publishing action's tag-per-service scheme.
     app:
+      image: cyberctf/ad-ldap-enumeration:dc
       build: build/dc
 
 checks:

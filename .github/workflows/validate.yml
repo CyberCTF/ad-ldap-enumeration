@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the Isoloom CLI
-        run: cargo install isoloom@1.0.1
+        run: cargo install isoloom@1.0.2
       - name: Spec is valid
         run: isoloom validate
 
@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the Isoloom + Isothrum CLIs
-        run: cargo install isoloom@1.0.1 isothrum-cli@1.0.0
+        run: cargo install isoloom@1.0.2 isothrum-cli@1.0.1
       - name: Generate the Docker edition
         run: isoloom generate --target docker
       - name: Up, check, down (Docker)
